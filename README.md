@@ -1,26 +1,28 @@
-# LiteNetLib 
+# LiteNetLib 0.8 indev
 
-Lite reliable UDP library for .NET, Mono, and .NET Core.
-Minimal .NET version - 3.5
+Lite reliable UDP library for .NET Framework 3.5, Mono, .NET Core 2.0, .NET Standard 2.0.
+
+[STABLE BRANCH (and examples) for 0.7.x](https://github.com/RevenantX/LiteNetLib/tree/0.7)
+
+[![Discord](https://img.shields.io/discord/501682175930925058.svg)](https://discord.gg/FATFPdy)
 
 ## Build
 
-[![](https://ci.appveyor.com/api/projects/status/354501wnvxs8kuh3/branch/master?svg=true)](https://ci.appveyor.com/project/RevenantX/litenetlib/branch/master)
+### [NuGet](https://www.nuget.org/packages/LiteNetLib/) [![NuGet](https://img.shields.io/nuget/v/LiteNetLib.svg)](https://www.nuget.org/packages/LiteNetLib/) [![NuGet](https://img.shields.io/nuget/dt/LiteNetLib.svg)](https://www.nuget.org/packages/LiteNetLib/)
 
-### [Release builds](https://github.com/RevenantX/LiteNetLib/releases)
+### [Release builds](https://github.com/RevenantX/LiteNetLib/releases) [![GitHub (pre-)release](https://img.shields.io/github/release/RevenantX/LiteNetLib/all.svg)](https://github.com/RevenantX/LiteNetLib/releases)
 
-### [DLL build from master ( Warning! Master branch can be unstable! )](https://ci.appveyor.com/project/RevenantX/litenetlib/branch/master/artifacts)
+### [DLL build from master](https://ci.appveyor.com/project/RevenantX/litenetlib/branch/master/artifacts) [![](https://ci.appveyor.com/api/projects/status/354501wnvxs8kuh3/branch/master?svg=true)](https://ci.appveyor.com/project/RevenantX/litenetlib/branch/master)
+( Warning! Master branch can be unstable! )
 
 ### Donations are welcome and will help further development of this project.
-```
-BTC: 15JFQ3tHHF22QDUkJYYvuYhyUoptkyaBms
-```
+[![Bountysource](https://img.shields.io/badge/bountysource-donate-green.svg)](https://salt.bountysource.com/checkout/amount?team=litenetlib)
 
 ## Features
 
 * Lightweight
   * Small CPU and RAM usage
-  * Small packet size overhead ( 1 byte for unrealiable, 3 bytes for reliable packets )
+  * Small packet size overhead ( 1 byte for unreliable, 3 bytes for reliable packets )
 * Simple connection handling
 * Peer to peer connections
 * Helper classes for sending and reading messages
@@ -30,7 +32,6 @@ BTC: 15JFQ3tHHF22QDUkJYYvuYhyUoptkyaBms
   * Ordered but unreliable with duplication prevention
   * Simple UDP packets without order and reliability
 * Fast packet serializer [(Usage manual)](https://github.com/RevenantX/LiteNetLib/wiki/NetSerializer-usage)
-* Packet flow control
 * Automatic small packets merging ( if enabled )
 * Automatic fragmentation of reliable packets
 * Automatic MTU detection
@@ -40,46 +41,28 @@ BTC: 15JFQ3tHHF22QDUkJYYvuYhyUoptkyaBms
 * IPv6 support (dual mode)
 * Connection statisitcs (need DEBUG or STATS_ENABLED flag)
 * Multicasting (for discovering hosts in local network)
-* Unity3d support (you can use library source in project)
+* Unity support
 * Supported platforms:
-  * Windows/Mac/Linux (.net framework, Mono, .net core)
-  * Android
-  * iOS (in Unity3d use library source and add compilation flag UNITY)
-  * Universal Windows (Windows 8.1 and Windows 10 including phones)
+  * Windows/Mac/Linux (.NET Framework, Mono, .NET Core)
+  * Android (Unity)
+  * iOS (Unity)
+  * UWP Windows 10 including phones
+
+## Unity notes!!!
+* Always use library sources instead of precompiled DLL files. 
 
 ## Usage samples
 
-### Server
-```csharp
-EventBasedNetListener listener = new EventBasedNetListener();
-NetManager server = new NetManager(listener, 2 /* maximum clients */, "SomeConnectionKey");
-server.Start(9050 /* port */);
-
-listener.PeerConnectedEvent += peer =>
-{
-    Console.WriteLine("We got connection: {0}", peer.EndPoint); // Show peer ip
-    NetDataWriter writer = new NetDataWriter();                 // Create writer class
-    writer.Put("Hello client!");                                // Put some string
-    peer.Send(writer, SendOptions.ReliableOrdered);             // Send with reliability
-};
-
-while (!Console.KeyAvailable)
-{
-    server.PollEvents();
-    Thread.Sleep(15);
-}
-
-server.Stop();
-```
 ### Client
 ```csharp
 EventBasedNetListener listener = new EventBasedNetListener();
-NetManager client = new NetManager(listener, "SomeConnectionKey");
+NetManager client = new NetManager(listener);
 client.Start();
-client.Connect("localhost" /* host ip or name */, 9050 /* port */);
-listener.NetworkReceiveEvent += (fromPeer, dataReader) =>
+client.Connect("localhost" /* host ip or name */, 9050 /* port */, "SomeConnectionKey" /* text key or NetDataWriter */);
+listener.NetworkReceiveEvent += (fromPeer, dataReader, deliveryMethod) =>
 {
     Console.WriteLine("We got: {0}", dataReader.GetString(100 /* max length of string */));
+    dataReader.Recycle();
 };
 
 while (!Console.KeyAvailable)
@@ -90,6 +73,35 @@ while (!Console.KeyAvailable)
 
 client.Stop();
 ```
+### Server
+```csharp
+EventBasedNetListener listener = new EventBasedNetListener();
+NetManager server = new NetManager(listener);
+server.Start(9050 /* port */);
+
+listener.ConnectionRequestEvent += request =>
+{
+    if(server.PeersCount < 10 /* max connections */)
+        request.AcceptIfKey("SomeConnectionKey");
+    else
+        request.Reject();
+};
+
+listener.PeerConnectedEvent += peer =>
+{
+    Console.WriteLine("We got connection: {0}", peer.EndPoint); // Show peer ip
+    NetDataWriter writer = new NetDataWriter();                 // Create writer class
+    writer.Put("Hello client!");                                // Put some string
+    peer.Send(writer, DeliveryMethod.ReliableOrdered);             // Send with reliability
+};
+
+while (!Console.KeyAvailable)
+{
+    server.PollEvents();
+    Thread.Sleep(15);
+}
+server.Stop();
+```
 
 ## NetManager settings description
 
@@ -97,11 +109,11 @@ client.Stop();
   * enable messages receiving without connection. (with SendUnconnectedMessage method)
   * default value: **false**
 * **NatPunchEnabled**
-  * enable nat punch messages
+  * enable NAT punch messages
   * default value: **false**
 * **UpdateTime**
   * library logic update (and send) period in milliseconds
-  * default value: **100 msec**. For games you can use 15 msec (66 ticks per second)
+  * default value: **15 msec**.
 * **PingInterval**
   * Interval for latency detection and checking connection
   * default value: **1000 msec**.

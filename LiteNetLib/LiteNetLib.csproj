@@ -21,7 +21,9 @@
     <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
     <Optimize>false</Optimize>
     <Externalconsole>true</Externalconsole>
-    <WarningLevel>4</WarningLevel>
+    <WarningLevel>3</WarningLevel>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+    <LangVersion>4</LangVersion>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|AnyCPU'">
     <OutputPath>bin\Release\</OutputPath>
@@ -33,6 +35,9 @@
     <WarningLevel>4</WarningLevel>
     <DocumentationFile>bin\Release\LiteNetLib.xml</DocumentationFile>
     <NoWarn>1591</NoWarn>
+    <DefineConstants>
+    </DefineConstants>
+    <LangVersion>4</LangVersion>
   </PropertyGroup>
   <PropertyGroup>
     <StartupObject />
@@ -41,15 +46,18 @@
     <Reference Include="System" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="BaseChannel.cs" />
+    <Compile Include="ConnectionRequest.cs" />
     <Compile Include="INetEventListener.cs" />
     <Compile Include="NetDebug.cs" />
+    <Compile Include="NetExceptions.cs" />
     <Compile Include="NetPacketPool.cs" />
-    <Compile Include="NetPeerCollection.cs" />
-    <Compile Include="NetThread.cs" />
+    <Compile Include="NetStatistics.cs" />
+    <Compile Include="Ntp\NtpPacket.cs" />
+    <Compile Include="Ntp\NtpRequest.cs" />
     <Compile Include="Utils\FastBitConverter.cs" />
     <Compile Include="NatPunchModule.cs" />
     <Compile Include="NetConstants.cs" />
-    <Compile Include="NetEndPoint.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="NetManager.cs" />
     <Compile Include="NetPacket.cs" />
@@ -59,9 +67,12 @@
     <Compile Include="SequencedChannel.cs" />
     <Compile Include="ReliableChannel.cs" />
     <Compile Include="SimpleChannel.cs" />
+    <Compile Include="Utils\INetSerializable.cs" />
     <Compile Include="Utils\NetDataReader.cs" />
     <Compile Include="Utils\NetDataWriter.cs" />
+    <Compile Include="Utils\NetPacketProcessor.cs" />
     <Compile Include="Utils\NetSerializer.cs" />
+    <Compile Include="Utils\NetSerializerExceptions.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
 </Project>

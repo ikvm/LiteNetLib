@@ -1,10 +1,10 @@
 ﻿using LiteNetLib.Utils;
+
 using NUnit.Framework;
 
-namespace LiteNetLib.Test
+namespace LiteNetLib.Tests
 {
     [TestFixture]
-    [Timeout(500)]
     [Category("DataReaderWriter")]
     public class ReaderWriterSimpleDataTest
     {
@@ -163,12 +163,12 @@ namespace LiteNetLib.Test
         public void WriteReadNetEndPoint()
         {
             var ndw = new NetDataWriter();
-            ndw.Put(new NetEndPoint("127.0.0.1", 7777));
+            ndw.Put(NetUtils.MakeEndPoint("127.0.0.1", 7777));
 
             var ndr = new NetDataReader(ndw.Data);
             var readNetEndPoint = ndr.GetNetEndPoint();
 
-            Assert.AreEqual(readNetEndPoint, new NetEndPoint("127.0.0.1", 7777));
+            Assert.AreEqual(readNetEndPoint, NetUtils.MakeEndPoint("127.0.0.1", 7777));
         }
 
         [Test]

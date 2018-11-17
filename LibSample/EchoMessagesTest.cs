@@ -1,4 +1,6 @@
 using System;
+using System.Net;
+using System.Net.Sockets;
 using System.Threading;
 using LiteNetLib;
 using LiteNetLib.Utils;
@@ -13,7 +15,7 @@ namespace LibSample
         {
             public void OnPeerConnected(NetPeer peer)
             {
-                Console.WriteLine("[Client] connected to: {0}:{1}", peer.EndPoint.Host, peer.EndPoint.Port);
+                Console.WriteLine("[Client] connected to: {0}:{1}", peer.EndPoint.Address, peer.EndPoint.Port);
 
                 NetDataWriter dataWriter = new NetDataWriter();
                 for (int i = 0; i < 5; i++)
@@ -21,29 +23,34 @@ namespace LibSample
                     dataWriter.Reset();
                     dataWriter.Put(0);
                     dataWriter.Put(i);
-                    peer.Send(dataWriter, SendOptions.ReliableUnordered);
+                    peer.Send(dataWriter, DeliveryMethod.ReliableUnordered);
 
                     dataWriter.Reset();
                     dataWriter.Put(1);
                     dataWriter.Put(i);
-                    peer.Send(dataWriter, SendOptions.ReliableOrdered);
+                    peer.Send(dataWriter, DeliveryMethod.ReliableOrdered);
 
                     dataWriter.Reset();
                     dataWriter.Put(2);
                     dataWriter.Put(i);
-                    peer.Send(dataWriter, SendOptions.Sequenced);
+                    peer.Send(dataWriter, DeliveryMethod.Sequenced);
 
                     dataWriter.Reset();
                     dataWriter.Put(3);
                     dataWriter.Put(i);
-                    peer.Send(dataWriter, SendOptions.Unreliable);
+                    peer.Send(dataWriter, DeliveryMethod.Unreliable);
+
+                    dataWriter.Reset();
+                    dataWriter.Put(4);
+                    dataWriter.Put(i);
+                    peer.Send(dataWriter, DeliveryMethod.ReliableSequenced);
                 }
 
                 //And test fragment
                 byte[] testData = new byte[13218];
                 testData[0] = 192;
                 testData[13217] = 31;
-                peer.Send(testData, SendOptions.ReliableOrdered);
+                peer.Send(testData, DeliveryMethod.ReliableOrdered);
             }
 
             public void OnPeerDisconnected(NetPeer peer, DisconnectInfo disconnectInfo)
@@ -51,27 +58,30 @@ namespace LibSample
                 Console.WriteLine("[Client] disconnected: " + disconnectInfo.Reason);
             }
 
-            public void OnNetworkError(NetEndPoint endPoint, int socketErrorCode)
+            public void OnNetworkError(IPEndPoint endPoint, SocketError socketErrorCode)
             {
                 Console.WriteLine("[Client] error! " + socketErrorCode);
             }
 
-            public void OnNetworkReceive(NetPeer peer, NetDataReader reader)
+            public void OnNetworkReceive(NetPeer peer, NetPacketReader reader, DeliveryMethod deliveryMethod)
             {
                 if (reader.AvailableBytes == 13218)
                 {
-                    Console.WriteLine("[{0}] TestFrag: {1}, {2}", peer.NetManager.LocalPort, reader.Data[0], reader.Data[13217]);
+                    Console.WriteLine("[{0}] TestFrag: {1}, {2}", 
+                        peer.NetManager.LocalPort, 
+                        reader.RawData[reader.UserDataOffset], 
+                        reader.RawData[reader.UserDataOffset + 13217]);
                 }
                 else
                 {
                     int type = reader.GetInt();
                     int num = reader.GetInt();
                     _messagesReceivedCount++;
-                    Console.WriteLine("[{0}] CNT: {1}, TYPE: {2}, NUM: {3}", peer.NetManager.LocalPort, _messagesReceivedCount, type, num);
+                    Console.WriteLine("[{0}] CNT: {1}, TYPE: {2}, NUM: {3}, MTD: {4}", peer.NetManager.LocalPort, _messagesReceivedCount, type, num, deliveryMethod);
                 }
             }
 
-            public void OnNetworkReceiveUnconnected(NetEndPoint remoteEndPoint, NetDataReader reader, UnconnectedMessageType messageType)
+            public void OnNetworkReceiveUnconnected(IPEndPoint remoteEndPoint, NetPacketReader reader, UnconnectedMessageType messageType)
             {
 
             }
@@ -79,6 +89,11 @@ namespace LibSample
             public void OnNetworkLatencyUpdate(NetPeer peer, int latency)
             {
                 
+            }
+
+            public void OnConnectionRequest(ConnectionRequest request)
+            {
+
             }
         }
 
@@ -89,10 +104,10 @@ namespace LibSample
             public void OnPeerConnected(NetPeer peer)
             {
                 Console.WriteLine("[Server] Peer connected: " + peer.EndPoint);
-                var peers = Server.GetPeers();
+                var peers = Server.GetPeers(ConnectionState.Connected);
                 foreach (var netPeer in peers)
                 {
-                    Console.WriteLine("ConnectedPeersList: id={0}, ep={1}", netPeer.ConnectId, netPeer.EndPoint);
+                    Console.WriteLine("ConnectedPeersList: id={0}, ep={1}", netPeer.Id, netPeer.EndPoint);
                 }
             }
 
@@ -101,24 +116,26 @@ namespace LibSample
                 Console.WriteLine("[Server] Peer disconnected: " + peer.EndPoint + ", reason: " + disconnectInfo.Reason);
             }
 
-            public void OnNetworkError(NetEndPoint endPoint, int socketErrorCode)
+            public void OnNetworkError(IPEndPoint endPoint, SocketError socketErrorCode)
             {
                 Console.WriteLine("[Server] error: " + socketErrorCode);
             }
 
-            public void OnNetworkReceive(NetPeer peer, NetDataReader reader)
+            public void OnNetworkReceive(NetPeer peer, NetPacketReader reader, DeliveryMethod deliveryMethod)
             {
                 //echo
-                peer.Send(reader.Data, SendOptions.ReliableUnordered);
+                peer.Send(reader.GetRemainingBytes(), deliveryMethod);
 
                 //fragment log
                 if (reader.AvailableBytes == 13218)
                 {
-                    Console.WriteLine("[Server] TestFrag: {0}, {1}", reader.Data[0], reader.Data[13217]);
+                    Console.WriteLine("[Server] TestFrag: {0}, {1}",
+                        reader.RawData[reader.UserDataOffset],
+                        reader.RawData[reader.UserDataOffset + 13217]);
                 }
             }
 
-            public void OnNetworkReceiveUnconnected(NetEndPoint remoteEndPoint, NetDataReader reader, UnconnectedMessageType messageType)
+            public void OnNetworkReceiveUnconnected(IPEndPoint remoteEndPoint, NetPacketReader reader, UnconnectedMessageType messageType)
             {
                 Console.WriteLine("[Server] ReceiveUnconnected: {0}", reader.GetString(100));
             }
@@ -127,19 +144,28 @@ namespace LibSample
             {
 
             }
+
+            public void OnConnectionRequest(ConnectionRequest request)
+            {
+                var acceptedPeer = request.AcceptIfKey("gamekey");
+                Console.WriteLine("[Server] ConnectionRequest. Ep: {0}, Accepted: {1}",
+                    request.RemoteEndPoint,
+                    acceptedPeer != null);
+            }
         }
 
         private ClientListener _clientListener;
         private ServerListener _serverListener;
+        private const int Port = 9050;
 
         public void Run()
         {
+            Console.WriteLine("=== Echo Messages Test ===");
             //Server
             _serverListener = new ServerListener();
 
-            NetManager server = new NetManager(_serverListener, 2, "myapp1");
-            //server.ReuseAddress = true;
-            if (!server.Start(9050))
+            NetManager server = new NetManager(_serverListener);
+            if (!server.Start(Port))
             {
                 Console.WriteLine("Server start failed");
                 Console.ReadKey();
@@ -150,22 +176,28 @@ namespace LibSample
             //Client
             _clientListener = new ClientListener();
 
-            NetManager client1 = new NetManager(_clientListener, "myapp1");
-            //client1.SimulateLatency = true;
-            client1.SimulationMaxLatency = 1500;
-            client1.MergeEnabled = true;
+            NetManager client1 = new NetManager(_clientListener)
+            {
+                SimulationMaxLatency = 1500,
+                //SimulateLatency = true,
+                MergeEnabled = true
+            };
+            //client1
             if (!client1.Start())
             {
                 Console.WriteLine("Client1 start failed");
                 return;
             }
-            client1.Connect("127.0.0.1", 9050);
+            client1.Connect("127.0.0.1", Port, "gamekey");
 
-            NetManager client2 = new NetManager(_clientListener, "myapp1");
-            //client2.SimulateLatency = true;
-            client2.SimulationMaxLatency = 1500;
+            NetManager client2 = new NetManager(_clientListener)
+            {
+                //SimulateLatency = true,
+                SimulationMaxLatency = 1500
+            };
+            
             client2.Start();
-            client2.Connect("::1", 9050);
+            client2.Connect("::1", Port, "gamekey");
 
             while (!Console.KeyAvailable)
             {
@@ -180,20 +212,20 @@ namespace LibSample
             server.Stop();
             Console.ReadKey();
             Console.WriteLine("ServStats:\n BytesReceived: {0}\n PacketsReceived: {1}\n BytesSent: {2}\n PacketsSent: {3}", 
-                server.BytesReceived, 
-                server.PacketsReceived, 
-                server.BytesSent, 
-                server.PacketsSent);
+                server.Statistics.BytesReceived, 
+                server.Statistics.PacketsReceived, 
+                server.Statistics.BytesSent, 
+                server.Statistics.PacketsSent);
             Console.WriteLine("Client1Stats:\n BytesReceived: {0}\n PacketsReceived: {1}\n BytesSent: {2}\n PacketsSent: {3}",
-                client1.BytesReceived,
-                client1.PacketsReceived,
-                client1.BytesSent,
-                client1.PacketsSent);
+                client1.Statistics.BytesReceived,
+                client1.Statistics.PacketsReceived,
+                client1.Statistics.BytesSent,
+                client1.Statistics.PacketsSent);
             Console.WriteLine("Client2Stats:\n BytesReceived: {0}\n PacketsReceived: {1}\n BytesSent: {2}\n PacketsSent: {3}",
-                client2.BytesReceived,
-                client2.PacketsReceived,
-                client2.BytesSent,
-                client2.PacketsSent);
+                client2.Statistics.BytesReceived,
+                client2.Statistics.PacketsReceived,
+                client2.Statistics.BytesSent,
+                client2.Statistics.PacketsSent);
             Console.WriteLine("Press any key to exit");
             Console.ReadKey();
         }

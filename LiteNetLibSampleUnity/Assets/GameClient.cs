@@ -1,6 +1,7 @@
+using System.Net;
+using System.Net.Sockets;
 using UnityEngine;
 using LiteNetLib;
-using LiteNetLib.Utils;
 
 public class GameClient : MonoBehaviour, INetEventListener
 {
@@ -13,16 +14,16 @@ public class GameClient : MonoBehaviour, INetEventListener
     private float _oldBallPosX;
     private float _lerpTime;
 
-    void Start ()
+    void Start()
     {
-        _netClient = new NetManager(this, "sample_app");
-	    _netClient.Start();
-	    _netClient.UpdateTime = 15;
+        _netClient = new NetManager(this);
+        _netClient.Start();
+        _netClient.UpdateTime = 15;
     }
 
-	void Update ()
+    void Update()
     {
-	    _netClient.PollEvents();
+        _netClient.PollEvents();
 
         var peer = _netClient.GetFirstPeer();
         if (peer != null && peer.ConnectionState == ConnectionState.Connected)
@@ -33,17 +34,17 @@ public class GameClient : MonoBehaviour, INetEventListener
             _clientBallInterpolated.transform.position = pos;
 
             //Basic lerp
-            _lerpTime += Time.deltaTime/Time.fixedDeltaTime;
+            _lerpTime += Time.deltaTime / Time.fixedDeltaTime;
         }
         else
         {
-            _netClient.SendDiscoveryRequest(new byte[] { 1 }, 5000);
+            _netClient.SendDiscoveryRequest(new byte[] {1}, 5000);
         }
     }
 
     void OnDestroy()
     {
-        if(_netClient != null)
+        if (_netClient != null)
             _netClient.Stop();
     }
 
@@ -52,12 +53,12 @@ public class GameClient : MonoBehaviour, INetEventListener
         Debug.Log("[CLIENT] We connected to " + peer.EndPoint);
     }
 
-    public void OnNetworkError(NetEndPoint endPoint, int socketErrorCode)
+    public void OnNetworkError(IPEndPoint endPoint, SocketError socketErrorCode)
     {
         Debug.Log("[CLIENT] We received error " + socketErrorCode);
     }
 
-    public void OnNetworkReceive(NetPeer peer, NetDataReader reader)
+    public void OnNetworkReceive(NetPeer peer, NetPacketReader reader, DeliveryMethod deliveryMethod)
     {
         _newBallPosX = reader.GetFloat();
 
@@ -71,16 +72,21 @@ public class GameClient : MonoBehaviour, INetEventListener
         _lerpTime = 0f;
     }
 
-    public void OnNetworkReceiveUnconnected(NetEndPoint remoteEndPoint, NetDataReader reader, UnconnectedMessageType messageType)
+    public void OnNetworkReceiveUnconnected(IPEndPoint remoteEndPoint, NetPacketReader reader, UnconnectedMessageType messageType)
     {
         if (messageType == UnconnectedMessageType.DiscoveryResponse && _netClient.PeersCount == 0)
         {
             Debug.Log("[CLIENT] Received discovery response. Connecting to: " + remoteEndPoint);
-            _netClient.Connect(remoteEndPoint);
+            _netClient.Connect(remoteEndPoint, "sample_app");
         }
     }
 
     public void OnNetworkLatencyUpdate(NetPeer peer, int latency)
+    {
+
+    }
+
+    public void OnConnectionRequest(ConnectionRequest request)
     {
         
     }

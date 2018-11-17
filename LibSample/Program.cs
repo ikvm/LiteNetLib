@@ -1,25 +1,32 @@
 using System;
-using LibSample;
-using LiteNetLib;
+using LiteNetLib.Ntp;
 
-class Program
+namespace LibSample
 {
-    static void Main(string[] args)
+    class Program
     {
-        //Test ntp
-        NetUtils.RequestTimeFromNTP("pool.ntp.org", 123, dateTime =>
+        static void Main(string[] args)
         {
-            if (dateTime.HasValue)
+            //Test ntp
+            NtpRequest ntpRequest = null;
+            ntpRequest = NtpRequest.Create("pool.ntp.org", ntpPacket =>
             {
-                Console.WriteLine("[MAIN] Synced time test: " + dateTime.Value);
-            }
-        });
+                ntpRequest.Close();
+                if (ntpPacket != null)
+                    Console.WriteLine("[MAIN] NTP time test offset: " + ntpPacket.CorrectionOffset);
+                else
+                    Console.WriteLine("[MAIN] NTP time error");
+            });
+            ntpRequest.Send();
 
-        //new EchoMessagesTest().Run();
-        //new HolePunchServerTest().Run();
-        //new BroadcastTest().Run();
-
-        //new BenchmarkTest.TestHost().Run();
-        new SerializerTest().Run();
+            new EchoMessagesTest().Run();
+            //new HolePunchServerTest().Run();
+            //new BroadcastTest().Run();
+            //new BenchmarkTest.TestHost().Run();
+            //new SerializerBenchmark().Run();
+            //new SpeedBench().Run();
+            //new PacketProcessorExample().Run();
+        }
     }
 }
+

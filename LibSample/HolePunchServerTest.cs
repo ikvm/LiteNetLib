@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Net;
 using System.Threading;
 using LiteNetLib;
 
@@ -7,8 +8,8 @@ namespace LibSample
 {
     class WaitPeer
     {
-        public NetEndPoint InternalAddr { get; private set; }
-        public NetEndPoint ExternalAddr { get; private set; }
+        public IPEndPoint InternalAddr { get; private set; }
+        public IPEndPoint ExternalAddr { get; private set; }
         public DateTime RefreshTime { get; private set; }
 
         public void Refresh()
@@ -16,7 +17,7 @@ namespace LibSample
             RefreshTime = DateTime.Now;
         }
 
-        public WaitPeer(NetEndPoint internalAddr, NetEndPoint externalAddr)
+        public WaitPeer(IPEndPoint internalAddr, IPEndPoint externalAddr)
         {
             Refresh();
             InternalAddr = internalAddr;
@@ -27,6 +28,7 @@ namespace LibSample
     class HolePunchServerTest : INatPunchListener
     {
         private const int ServerPort = 50010;
+        private const string ConnectionKey = "test_key";
         private static readonly TimeSpan KickTime = new TimeSpan(0, 0, 6);
 
         private readonly Dictionary<string, WaitPeer> _waitingPeers = new Dictionary<string, WaitPeer>();
@@ -35,7 +37,7 @@ namespace LibSample
         private NetManager _c1;
         private NetManager _c2;
 
-        void INatPunchListener.OnNatIntroductionRequest(NetEndPoint localEndPoint, NetEndPoint remoteEndPoint, string token)
+        void INatPunchListener.OnNatIntroductionRequest(IPEndPoint localEndPoint, IPEndPoint remoteEndPoint, string token)
         {
             WaitPeer wpeer;
             if (_waitingPeers.TryGetValue(token, out wpeer))
@@ -75,13 +77,15 @@ namespace LibSample
             }
         }
 
-        void INatPunchListener.OnNatIntroductionSuccess(NetEndPoint targetEndPoint, string token)
+        void INatPunchListener.OnNatIntroductionSuccess(IPEndPoint targetEndPoint, string token)
         {
             //Ignore we are server
         }
 
         public void Run()
         {
+            Console.WriteLine("=== HolePunch Test ===");
+            
             EventBasedNetListener netListener = new EventBasedNetListener();
             EventBasedNatPunchListener natPunchListener1 = new EventBasedNatPunchListener();
             EventBasedNatPunchListener natPunchListener2 = new EventBasedNatPunchListener();
@@ -89,6 +93,11 @@ namespace LibSample
             netListener.PeerConnectedEvent += peer =>
             {
                 Console.WriteLine("PeerConnected: " + peer.EndPoint.ToString());
+            };
+
+            netListener.ConnectionRequestEvent += request =>
+            {
+                request.AcceptIfKey(ConnectionKey);
             };
 
             netListener.PeerDisconnectedEvent += (peer, disconnectInfo) =>
@@ -102,33 +111,33 @@ namespace LibSample
 
             natPunchListener1.NatIntroductionSuccess += (point, token) =>
             {
-                Console.WriteLine("Success C1. Connecting to C2: {0}", point);
-                _c1.Connect(point);
+                var peer = _c1.Connect(point, ConnectionKey);
+                Console.WriteLine("Success C1. Connecting to C2: {0}, connection created: {1}", point, peer != null);
             };
 
             natPunchListener2.NatIntroductionSuccess += (point, token) =>
             {
-                Console.WriteLine("Success C2. Connecting to C1: {0}", point);
-                _c2.Connect(point);
+                var peer = _c2.Connect(point, ConnectionKey);
+                Console.WriteLine("Success C2. Connecting to C1: {0}, connection created: {1}", point, peer != null);
             };
 
-            _c1 = new NetManager(netListener, "gamekey");
+            _c1 = new NetManager(netListener);
             _c1.NatPunchEnabled = true;
             _c1.NatPunchModule.Init(natPunchListener1);
             _c1.Start();
 
-            _c2 = new NetManager(netListener, "gamekey");
+            _c2 = new NetManager(netListener);
             _c2.NatPunchEnabled = true;
             _c2.NatPunchModule.Init(natPunchListener2);
             _c2.Start();
 
-            _puncher = new NetManager(netListener, "notneed");
+            _puncher = new NetManager(netListener);
             _puncher.Start(ServerPort);
             _puncher.NatPunchEnabled = true;
             _puncher.NatPunchModule.Init(this);
 
-            _c1.NatPunchModule.SendNatIntroduceRequest(new NetEndPoint("::1", ServerPort), "token1");
-            _c2.NatPunchModule.SendNatIntroduceRequest(new NetEndPoint("::1", ServerPort), "token1");
+            _c1.NatPunchModule.SendNatIntroduceRequest(NetUtils.MakeEndPoint("::1", ServerPort), "token1");
+            _c2.NatPunchModule.SendNatIntroduceRequest(NetUtils.MakeEndPoint("::1", ServerPort), "token1");
 
             // keep going until ESCAPE is pressed
             Console.WriteLine("Press ESC to quit");
@@ -145,7 +154,7 @@ namespace LibSample
                     if (key == ConsoleKey.A)
                     {
                         Console.WriteLine("C1 stopped");
-                        _c1.DisconnectPeer(_c1.GetFirstPeer(), new byte[] {1,2,3,4});
+                        _c1.DisconnectPeer(_c1.FirstPeer, new byte[] {1,2,3,4});
                         _c1.Stop();
                     }
                 }
